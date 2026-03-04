@@ -1,18 +1,24 @@
 name: thu_linh_thu
-description: Simple EPUB Reader
+description: EPUB reader (text) + library + daily reading time
 publish_to: "none"
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.0.0 <4.0.0"
+  sdk: ">=3.3.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
 
-  file_picker: ^8.0.0
-  shared_preferences: ^2.2.3
+  file_picker: ^8.3.7
+  path_provider: ^2.1.5
+  shared_preferences: ^2.5.4
   archive: ^3.6.1
+  xml: ^6.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
 
 flutter:
   uses-material-design: true
