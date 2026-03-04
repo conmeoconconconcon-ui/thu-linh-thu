@@ -1,8 +1,8 @@
 name: thu_linh_thu
-description: Thu Linh Thu - EPUB
+description: Thu Linh Thu - EPUB Reader
 publish_to: "none"
 
-version: 1.0.0+2
+version: 1.0.0+3
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -12,11 +12,12 @@ dependencies:
     sdk: flutter
 
   file_picker: ^8.0.0
-  shared_preferences: ^2.2.3
   path_provider: ^2.1.3
   path: ^1.9.0
+  shared_preferences: ^2.2.3
 
-  epub_view: ^3.0.0
+  epubx: ^4.0.0
+  flutter_html: ^3.0.0-beta.2
 
 flutter:
   uses-material-design: true
