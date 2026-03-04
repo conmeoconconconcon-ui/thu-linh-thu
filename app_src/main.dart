@@ -1,7 +1,13 @@
-import 'dart:async';
-import 'package:flutter/material.dart';
+import 'dart:io';
 
-void main() => runApp(const ThuLinhThuApp());
+import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vocsy_epub_viewer/epub_viewer.dart';
+
+void main() {
+  runApp(const ThuLinhThuApp());
+}
 
 class ThuLinhThuApp extends StatelessWidget {
   const ThuLinhThuApp({super.key});
@@ -11,181 +17,190 @@ class ThuLinhThuApp extends StatelessWidget {
     return MaterialApp(
       title: 'Thư Linh Thú',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: const Color(0xFF7B5CFF)),
-      home: const MainShell(),
+      theme: ThemeData(useMaterial3: true),
+      home: const HomeScreen(),
     );
   }
 }
 
-class GameState {
-  static int exp = 0;
-  static int totalReadSeconds = 0;
-  static int level = 1;
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
-  static void addReadSecond() {
-    totalReadSeconds += 1;
-    exp = totalReadSeconds; // 1 giây = 1 EXP (demo). Sau này đổi theo phút/trang.
-    level = 1 + (exp ~/ 600); // mỗi 10 phút lên 1 cấp
-  }
-}
-
-class MainShell extends StatefulWidget {
-  const MainShell({super.key});
   @override
-  State<MainShell> createState() => _MainShellState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _MainShellState extends State<MainShell> {
-  int tab = 0;
+class _HomeScreenState extends State<HomeScreen> {
+  String? lastEpubPath;
+  String? lastEpubName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastBook();
+    _setupEpubCallbacks();
+  }
+
+  Future<void> _loadLastBook() async {
+    final sp = await SharedPreferences.getInstance();
+    setState(() {
+      lastEpubPath = sp.getString('last_epub_path');
+      lastEpubName = sp.getString('last_epub_name');
+    });
+  }
+
+  void _setupEpubCallbacks() {
+    // Lưu tiến độ (cfi) khi user đổi trang
+    EpubViewer.locatorStream.listen((locator) async {
+      try {
+        final sp = await SharedPreferences.getInstance();
+        await sp.setString('last_epub_locator', locator);
+      } catch (_) {}
+    });
+  }
+
+  Future<void> _pickAndOpenEpub() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['epub'],
+      withData: false,
+    );
+
+    if (result == null || result.files.isEmpty) return;
+
+    final path = result.files.single.path;
+    if (path == null) return;
+
+    final file = File(path);
+    if (!await file.exists()) return;
+
+    final name = result.files.single.name;
+
+    final sp = await SharedPreferences.getInstance();
+    await sp.setString('last_epub_path', path);
+    await sp.setString('last_epub_name', name);
+
+    setState(() {
+      lastEpubPath = path;
+      lastEpubName = name;
+    });
+
+    await _openEpub(path);
+  }
+
+  Future<void> _openLastBook() async {
+    if (lastEpubPath == null) return;
+    final file = File(lastEpubPath!);
+    if (!await file.exists()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không tìm thấy file EPUB đã lưu. Hãy chọn lại.')),
+      );
+      return;
+    }
+    await _openEpub(lastEpubPath!);
+  }
+
+  Future<void> _openEpub(String path) async {
+    final sp = await SharedPreferences.getInstance();
+    final lastLocator = sp.getString('last_epub_locator');
+
+    await EpubViewer.open(
+      path,
+      lastLocation: lastLocator, // mở đúng trang lần trước
+      themeData: EpubViewerThemeData(
+        backgroundColor: Colors.white,
+        // Bạn có thể chỉnh font/size sau
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
-      Home(onGoRead: () => setState(() => tab = 1)),
-      Reader(onChanged: () => setState(() {})),
-      const Bag(),
-      const Profile(),
-    ];
+    final hasLast = (lastEpubPath != null && lastEpubPath!.isNotEmpty);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Thư Linh Thú'),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Center(child: Text('EXP ${GameState.exp} • Cấp ${GameState.level}')),
+          IconButton(
+            onPressed: _pickAndOpenEpub,
+            icon: const Icon(Icons.upload_file),
+            tooltip: 'Chọn EPUB',
           ),
         ],
       ),
-      body: pages[tab],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: tab,
-        onDestinationSelected: (i) => setState(() => tab = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home), label: 'Trang chủ'),
-          NavigationDestination(icon: Icon(Icons.menu_book), label: 'Đọc'),
-          NavigationDestination(icon: Icon(Icons.inventory_2), label: 'Túi đồ'),
-          NavigationDestination(icon: Icon(Icons.person), label: 'Hồ sơ'),
-        ],
-      ),
-    );
-  }
-}
-
-class Home extends StatelessWidget {
-  final VoidCallback onGoRead;
-  const Home({super.key, required this.onGoRead});
-
-  @override
-  Widget build(BuildContext context) {
-    final mins = GameState.totalReadSeconds ~/ 60;
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Card(
-          child: ListTile(
-            leading: const CircleAvatar(child: Text('🐉')),
-            title: Text('Linh thú: Tiểu Long (Cấp ${GameState.level})'),
-            subtitle: Text('Đã đọc: $mins phút • EXP: ${GameState.exp}'),
-            trailing: FilledButton(onPressed: onGoRead, child: const Text('Đọc ngay')),
-          ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            _CardBook(
+              title: hasLast ? (lastEpubName ?? 'Sách đã lưu') : 'Chưa có sách',
+              subtitle: hasLast ? 'Bấm “Đọc tiếp” để mở trang đang đọc' : 'Bấm “Chọn EPUB” để bắt đầu',
+              primaryText: hasLast ? 'Đọc tiếp' : 'Chọn EPUB',
+              onPrimary: hasLast ? _openLastBook : _pickAndOpenEpub,
+              secondaryText: 'Chọn EPUB',
+              onSecondary: _pickAndOpenEpub,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Tip: File EPUB có thể nằm trong Downloads hoặc thư mục bạn lưu sách.',
+              style: TextStyle(color: Colors.black54),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
 
-class Reader extends StatefulWidget {
-  final VoidCallback onChanged;
-  const Reader({super.key, required this.onChanged});
+class _CardBook extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String primaryText;
+  final VoidCallback onPrimary;
+  final String secondaryText;
+  final VoidCallback onSecondary;
 
-  @override
-  State<Reader> createState() => _ReaderState();
-}
-
-class _ReaderState extends State<Reader> {
-  Timer? timer;
-  int session = 0;
-  bool running = false;
-
-  void start() {
-    if (running) return;
-    setState(() => running = true);
-    timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() => session++);
-      GameState.addReadSecond();
-      widget.onChanged();
-    });
-  }
-
-  void stop() {
-    timer?.cancel();
-    timer = null;
-    setState(() => running = false);
-  }
-
-  @override
-  void dispose() {
-    timer?.cancel();
-    super.dispose();
-  }
+  const _CardBook({
+    required this.title,
+    required this.subtitle,
+    required this.primaryText,
+    required this.onPrimary,
+    required this.secondaryText,
+    required this.onSecondary,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final m = session ~/ 60, s = session % 60;
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Card(child: ListTile(title: const Text('Đọc sách (demo)'), subtitle: Text('Phiên này: ${m}p ${s}s'))),
-          const SizedBox(height: 12),
-          const Expanded(
-            child: Card(
-              child: Padding(
-                padding: EdgeInsets.all(14),
-                child: SingleChildScrollView(
-                  child: Text('Đây là khung đọc demo.\n\nBấm “Bắt đầu” để tích thời gian đọc → tăng EXP → lên cấp linh thú.'),
-                ),
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            const CircleAvatar(child: Icon(Icons.menu_book)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Text(subtitle, style: const TextStyle(color: Colors.black54)),
+                ],
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: running ? null : start,
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Bắt đầu'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: running ? stop : null,
-                  icon: const Icon(Icons.pause),
-                  label: const Text('Tạm dừng'),
-                ),
-              ),
-            ],
-          ),
-        ],
+            const SizedBox(width: 12),
+            Column(
+              children: [
+                FilledButton(onPressed: onPrimary, child: Text(primaryText)),
+                const SizedBox(height: 8),
+                OutlinedButton(onPressed: onSecondary, child: Text(secondaryText)),
+              ],
+            ),
+          ],
+        ),
       ),
     );
-  }
-}
-
-class Bag extends StatelessWidget {
-  const Bag({super.key});
-  @override
-  Widget build(BuildContext context) => const Center(child: Text('Túi đồ (demo)'));
-}
-
-class Profile extends StatelessWidget {
-  const Profile({super.key});
-  @override
-  Widget build(BuildContext context) {
-    final hours = (GameState.totalReadSeconds / 3600).toStringAsFixed(2);
-    return Center(child: Text('Tổng thời gian đọc: $hours giờ'));
   }
 }
