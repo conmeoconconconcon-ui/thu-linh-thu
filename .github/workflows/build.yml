@@ -1,6 +1,7 @@
 name: Build APK
 
 on:
+  push:
   workflow_dispatch:
 
 jobs:
@@ -10,11 +11,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -22,23 +18,18 @@ jobs:
       - name: Create Flutter project
         run: flutter create app
 
-      - name: Copy app source
+      - name: Copy source
         run: |
-          cp app_src/pubspec.yaml app/pubspec.yaml
-          cp -r app_src/lib app/
+          cp -r app_src/* app/
 
-      - name: Pub get
+      - name: Build APK
         run: |
           cd app
           flutter pub get
-
-      - name: Build release APK
-        run: |
-          cd app
           flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
+          name: apk
           path: app/build/app/outputs/flutter-apk/app-release.apk
