@@ -1,11 +1,11 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vocsy_epub_viewer/epub_viewer.dart'; 
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vocsy_epub_viewer/epub_viewer.dart';
 
 void main() {
   runApp(const ThuLinhThuApp());
@@ -19,186 +19,213 @@ class ThuLinhThuApp extends StatelessWidget {
     return MaterialApp(
       title: 'Thư Linh Thú',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(useMaterial3: true),
-      home: const HomeScreen(),
+      theme: ThemeData(
+        useMaterial3: true,
+      ),
+      home: const HomePage(),
     );
   }
 }
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomePage> createState() => _HomePageState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  String? lastEpubPath;
-  String? lastEpubName;
+class _HomePageState extends State<HomePage> {
+  static const _prefKeyEpubPath = 'saved_epub_path';
+  String? _savedPath;
 
   @override
   void initState() {
     super.initState();
-    _loadLastBook();
-    _setupEpubCallbacks();
+    _loadSavedPath();
   }
 
-  Future<void> _loadLastBook() async {
+  Future<void> _loadSavedPath() async {
     final sp = await SharedPreferences.getInstance();
-    setState(() {
-      lastEpubPath = sp.getString('last_epub_path');
-      lastEpubName = sp.getString('last_epub_name');
-    });
+    setState(() => _savedPath = sp.getString(_prefKeyEpubPath));
   }
 
-  void _setupEpubCallbacks() {
-    // Lưu tiến độ (cfi) khi user đổi trang
-    EpubViewer.locatorStream.listen((locator) async {
-      try {
-        final sp = await SharedPreferences.getInstance();
-        await sp.setString('last_epub_locator', locator);
-      } catch (_) {}
-    });
+  Future<void> _savePath(String path) async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.setString(_prefKeyEpubPath, path);
+    setState(() => _savedPath = path);
   }
 
-  Future<void> _pickAndOpenEpub() async {
+  Future<void> _clearSaved() async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.remove(_prefKeyEpubPath);
+    setState(() => _savedPath = null);
+  }
+
+  Future<String?> _pickAndCopyEpubToAppStorage() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['epub'],
       withData: false,
     );
 
-    if (result == null || result.files.isEmpty) return;
+    if (result == null || result.files.isEmpty) return null;
 
-    final path = result.files.single.path;
-    if (path == null) return;
+    final picked = result.files.single;
+    final originalPath = picked.path;
+    if (originalPath == null) return null;
 
-    final file = File(path);
-    if (!await file.exists()) return;
+    final srcFile = File(originalPath);
+    if (!await srcFile.exists()) return null;
 
-    final name = result.files.single.name;
+    // Thư mục an toàn của app (không cần quyền truy cập bộ nhớ trên Android mới)
+    final dir = await getApplicationDocumentsDirectory();
+    final safeFolder = Directory(p.join(dir.path, 'epubs'));
+    if (!await safeFolder.exists()) {
+      await safeFolder.create(recursive: true);
+    }
 
-    final sp = await SharedPreferences.getInstance();
-    await sp.setString('last_epub_path', path);
-    await sp.setString('last_epub_name', name);
+    // Đặt tên file trong app: giữ tên gốc + tránh trùng
+    final baseName = p.basename(originalPath);
+    final targetPath = p.join(safeFolder.path, baseName);
 
-    setState(() {
-      lastEpubPath = path;
-      lastEpubName = name;
-    });
+    // Nếu trùng tên thì thêm hậu tố
+    String finalTarget = targetPath;
+    if (await File(finalTarget).exists()) {
+      final nameNoExt = p.basenameWithoutExtension(baseName);
+      final ext = p.extension(baseName); // .epub
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      finalTarget = p.join(safeFolder.path, '${nameNoExt}_$ts$ext');
+    }
 
-    await _openEpub(path);
+    final copied = await srcFile.copy(finalTarget);
+    return copied.path;
   }
 
-  Future<void> _openLastBook() async {
-    if (lastEpubPath == null) return;
-    final file = File(lastEpubPath!);
-    if (!await file.exists()) {
+  Future<void> _openEpub(String filePath) async {
+    // vocsy_epub_viewer đọc bằng filePath
+    await EpubViewer.open(
+      filePath,
+      epubSource: EpubSource.local,
+    );
+  }
+
+  Future<void> _chooseEpub() async {
+    try {
+      final copiedPath = await _pickAndCopyEpubToAppStorage();
+      if (copiedPath == null) return;
+
+      await _savePath(copiedPath);
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không tìm thấy file EPUB đã lưu. Hãy chọn lại.')),
+        const SnackBar(content: Text('Đã thêm EPUB vào tủ sách.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi chọn EPUB: $e')),
+      );
+    }
+  }
+
+  Future<void> _readNow() async {
+    final path = _savedPath;
+    if (path == null) return;
+
+    final f = File(path);
+    if (!await f.exists()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không tìm thấy file (đã bị xóa/di chuyển).')),
       );
       return;
     }
-    await _openEpub(lastEpubPath!);
-  }
 
-  Future<void> _openEpub(String path) async {
-    final sp = await SharedPreferences.getInstance();
-    final lastLocator = sp.getString('last_epub_locator');
-
-    await EpubViewer.open(
-      path,
-      lastLocation: lastLocator, // mở đúng trang lần trước
-      themeData: EpubViewerThemeData(
-        backgroundColor: Colors.white,
-        // Bạn có thể chỉnh font/size sau
-      ),
-    );
+    try {
+      await _openEpub(path);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi mở EPUB: $e')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final hasLast = (lastEpubPath != null && lastEpubPath!.isNotEmpty);
+    final hasBook = _savedPath != null;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Thư Linh Thú'),
         actions: [
-          IconButton(
-            onPressed: _pickAndOpenEpub,
-            icon: const Icon(Icons.upload_file),
-            tooltip: 'Chọn EPUB',
-          ),
+          if (hasBook)
+            IconButton(
+              tooltip: 'Xóa sách đã lưu',
+              onPressed: _clearSaved,
+              icon: const Icon(Icons.delete_outline),
+            ),
         ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            _CardBook(
-              title: hasLast ? (lastEpubName ?? 'Sách đã lưu') : 'Chưa có sách',
-              subtitle: hasLast ? 'Bấm “Đọc tiếp” để mở trang đang đọc' : 'Bấm “Chọn EPUB” để bắt đầu',
-              primaryText: hasLast ? 'Đọc tiếp' : 'Chọn EPUB',
-              onPrimary: hasLast ? _openLastBook : _pickAndOpenEpub,
-              secondaryText: 'Chọn EPUB',
-              onSecondary: _pickAndOpenEpub,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Tip: File EPUB có thể nằm trong Downloads hoặc thư mục bạn lưu sách.',
-              style: TextStyle(color: Colors.black54),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CardBook extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final String primaryText;
-  final VoidCallback onPrimary;
-  final String secondaryText;
-  final VoidCallback onSecondary;
-
-  const _CardBook({
-    required this.title,
-    required this.subtitle,
-    required this.primaryText,
-    required this.onPrimary,
-    required this.secondaryText,
-    required this.onSecondary,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            const CircleAvatar(child: Icon(Icons.menu_book)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 4),
-                  Text(subtitle, style: const TextStyle(color: Colors.black54)),
-                ],
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    const CircleAvatar(child: Icon(Icons.menu_book_outlined)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            hasBook ? 'Đã có 1 EPUB trong tủ' : 'Chưa có EPUB',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            hasBook
+                                ? p.basename(_savedPath!)
+                                : 'Bấm “Chọn EPUB” để thêm sách từ điện thoại.',
+                          ),
+                          if (hasBook) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              _savedPath!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: hasBook ? _readNow : null,
+                      child: const Text('Đọc ngay'),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(width: 12),
-            Column(
-              children: [
-                FilledButton(onPressed: onPrimary, child: Text(primaryText)),
-                const SizedBox(height: 8),
-                OutlinedButton(onPressed: onSecondary, child: Text(secondaryText)),
-              ],
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _chooseEpub,
+              icon: const Icon(Icons.upload_file),
+              label: const Text('Chọn EPUB (từ điện thoại)'),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'File sẽ được copy vào thư mục riêng của app để lần sau vẫn đọc được.',
+              textAlign: TextAlign.center,
             ),
           ],
         ),
