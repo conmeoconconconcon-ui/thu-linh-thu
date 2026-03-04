@@ -1,7 +1,6 @@
 name: Build APK
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:
@@ -13,33 +12,33 @@ jobs:
 
       - uses: actions/setup-java@v4
         with:
-          distribution: "temurin"
-          java-version: "17"
+          distribution: temurin
+          java-version: '17'
 
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          cache: true
 
-      # Tạo project Flutter (sinh android/)
       - name: Create Flutter project
-        run: flutter create . --project-name thu_linh_thu
+        run: flutter create app
 
-      # Chép code app của bạn vào project vừa tạo
       - name: Copy app source
         run: |
-          cp app_src/pubspec.yaml pubspec.yaml
-          mkdir -p lib
-          cp app_src/main.dart lib/main.dart
+          cp app_src/pubspec.yaml app/pubspec.yaml
+          cp -r app_src/lib app/
 
       - name: Pub get
-        run: flutter pub get
+        run: |
+          cd app
+          flutter pub get
 
       - name: Build release APK
-        run: flutter build apk --release
+        run: |
+          cd app
+          flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: app/build/app/outputs/flutter-apk/app-release.apk
