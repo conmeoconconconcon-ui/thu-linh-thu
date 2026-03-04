@@ -1,6 +1,8 @@
 name: thu_linh_thu
-description: App doc sach nuoi linh thu
-version: 1.0.0
+description: Thu Linh Thu - v2
+publish_to: "none"
+
+version: 1.0.0+2
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -8,6 +10,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
+  file_picker: ^8.0.0
+  vocsy_epub_viewer: ^2.0.0
+  shared_preferences: ^2.2.3
 
 flutter:
   uses-material-design: true
