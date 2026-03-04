@@ -11,13 +11,24 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Chọn file từ máy
   file_picker: ^8.0.0
-  path_provider: ^2.1.3
-  path: ^1.9.0
+
+  # Lưu sách đã chọn + trang đang đọc
   shared_preferences: ^2.2.3
 
-  epubx: ^4.0.0
-  flutter_html: ^3.0.0-beta.2
+  # Đường dẫn + thư mục app
+  path: ^1.9.0
+  path_provider: ^2.1.3
+
+  # Giải nén epub (zip)
+  archive: ^3.6.1
+
+  # Parse container.xml + content.opf
+  xml: ^6.5.0
+
+  # Render html/css trong EPUB (mạnh hơn epubx)
+  webview_flutter: ^4.8.0
 
 flutter:
   uses-material-design: true
