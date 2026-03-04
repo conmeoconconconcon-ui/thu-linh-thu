@@ -1,8 +1,8 @@
 name: thu_linh_thu
-description: Thu Linh Thu EPUB Reader
+description: EPUB Reader
 publish_to: "none"
 
-version: 1.0.0+5
+version: 1.0.0+6
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -13,35 +13,20 @@ dependencies:
 
   cupertino_icons: ^1.0.6
 
-  # Chọn file từ điện thoại
   file_picker: ^8.0.0
-
-  # Lưu vị trí đọc
   shared_preferences: ^2.2.3
-
-  # Đường dẫn file
-  path: ^1.9.0
   path_provider: ^2.1.3
+  path: ^1.9.0
 
-  # Giải nén EPUB
   archive: ^3.6.1
-
-  # Parse EPUB mạnh
   epubx: ^4.0.0
-
-  # Render HTML của chương
   flutter_html: ^3.0.0-beta.2
-
-  # Đọc XML container.xml
   xml: ^6.5.0
-
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
   flutter_lints: ^3.0.0
-
 
 flutter:
   uses-material-design: true
