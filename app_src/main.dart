@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vocsy_epub_viewer/epub_viewer.dart';
+import 'package:vocsy_epub_viewer/epub_viewer.dart'; 
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 
 void main() {
   runApp(const ThuLinhThuApp());
